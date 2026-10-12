@@ -38,7 +38,10 @@ def fetch_ticket_data(_token):
 data = fetch_ticket_data(active_token)
 
 if data:
-    sections = data.get("result", {}).get("sections", [])
+    # --- ĐÃ SỬA LỖI Ở DÒNG NÀY ---
+    # Ticketbox bọc dữ liệu trong key "data" -> "result" -> "sections"
+    sections = data.get("data", {}).get("result", {}).get("sections", [])
+    
     stats = []
     
     for sec in sections:
@@ -48,17 +51,17 @@ if data:
         name = sec.get("name", "Unknown")
         all_seats = []
         
-        # LOGIC MỚI: Tìm bới các lớp để lấy danh sách ghế
         if "seats" in sec:
             all_seats.extend(sec["seats"])
-        elif "rows" in sec: # Nếu ghế giấu trong từng hàng
+        elif "rows" in sec:
             for row in sec["rows"]:
+                # Mò vào từng dòng để bốc ghế ra
                 if "seats" in row:
                     all_seats.extend(row["seats"])
         
         if all_seats:
             total = len(all_seats)
-            # Ticketbox thường: 0 = trống, 1 = đang giữ, khác 0 là đã bán
+            # Dựa vào thuộc tính trạng thái ghế (0 = đang bán, số khác = đã khoá/bán)
             sold = sum(1 for s in all_seats if str(s.get("status")) != "0")
             stats.append({
                 "Hạng Vé / Khu Vực": name, 
@@ -77,10 +80,9 @@ if data:
         
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
-        st.warning("Vẫn không tìm thấy dữ liệu ghế! Dưới đây là JSON thực tế, m copy phần xổ ra hoặc chụp màn hình quăng lại t xem nha:")
-        # Bật debug lên để nhìn trực tiếp cấu trúc
+        st.warning("Đã vào đúng cấu trúc JSON nhưng Ticketbox vẫn cất mảng 'seats' ở đâu đó. Nhấn vào dưới để xem nha:")
         with st.expander("BẤM VÀO ĐÂY ĐỂ XEM DỮ LIỆU JSON"):
-            st.json(sections[:3]) 
+            st.json(sections[:2]) 
 
 if st.button("🔄 Làm mới dữ liệu"):
     fetch_ticket_data.clear()
