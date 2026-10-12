@@ -5,17 +5,13 @@ import pandas as pd
 st.set_page_config(page_title="Thống kê vé", layout="centered")
 st.title("📊 Bảng theo dõi vé Ticketbox")
 
-# Thêm 1 ô input để nhập token mới ngay trên giao diện web
 token_input = st.text_input("🔑 Dán Access Token mới vào đây (Nếu không nhập sẽ dùng token mặc định dưới code):", type="password")
 
 # ==========================================
-# 1. M CHỈ CẦN DÁN TOKEN VÀO CÁI BIẾN NÀY LÀ ĐƯỢC:
 DEFAULT_TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJpZGVudGl0eS50aWNrZXRib3gudm4iLCJhdWQiOlsiYXBpLnRpY2tldGJveC52biJdLCJleHAiOjE3OTE4MTYwMjcsImlhdCI6MTc5MTgxNTkwNywiZGV2aWNlX2lkIjoiN2EyNjA3YjI3MWI5ZjU5YjliZTczYjNjOWNhMTU3ZmYiLCJ1c2VyX2lkIjozMzk4MzkzLCJlbWFpbCI6ImxlaGFwaHVvbmc1MTBAZ21haWwuY29tIiwibmFtZSI6IlBoxrDGoW5nIEzDqiIsInBob25lIjoiKzg0OTAzMTk5ODI1IiwicGxhdGZvcm0iOiJ3ZWIiLCJzZXNzaW9uX2lkIjoiNDI1NmZlYmUtYzlkYy00ZWVmLTllNDMtMzNlZGI3MmMyYmZlIiwia2luZCI6ImFjY2Vzc190b2tlbiJ9.bx5mR3jZrJwWuzoG6u50g4sM4q1AiIoGHriZupS2Mq_kDzarLD8rT5wPIOl-FhiP8P_Nc6BNCDLkH_zRX9wE8XIPr7wEzQouH4meCrU6uKQJZ2Tz0cs5skeAy6GTuszqETJp3XR_v1HOWEvXtaxHt12uYGcOLK0Jo7OwD09AWlP62xpzf8Sr5SMNZEoFDEKaXNjC_lpxCmgHI2ZkdvBwBiAm-SwdTF6BqknNJmtrrjPNF9d1JRby4m5kYtg_J21Qw6Cso-mLKJ_bH_JqL3o6a4glbya4sj-6pCSygXpNgLjMJgXe_GTH2LTXBh-SAM2ayW18NOSiJk23HIDYEtBu7g"
 # ==========================================
 
-# Nếu ô input có dữ liệu thì xài dữ liệu đó, không thì xài token mặc định
 active_token = token_input.strip() if token_input.strip() else DEFAULT_TOKEN
-
 API_URL = "https://api-v2.ticketbox.vn/event/api/v1/events/showings/41775904473808/seatmap"
 HEADERS = {
     "accept": "*/*",
@@ -24,18 +20,14 @@ HEADERS = {
     "origin": "https://ticketbox.vn",
     "referer": "https://ticketbox.vn/",
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
-    
-    # 2. CHỖ NÀY GIỮ NGUYÊN CHỮ 'active_token', KHÔNG DÁN CÁI GÌ VÀO ĐÂY HẾT NHA:
     "x-tb-access-token": active_token  
 }
 
 @st.cache_data(ttl=30)
 def fetch_ticket_data(_token):
     try:
-        # Cập nhật header mới nhất vào request
         current_headers = HEADERS.copy()
         current_headers["x-tb-access-token"] = _token
-        
         response = requests.get(API_URL, headers=current_headers, timeout=10)
         response.raise_for_status()
         return response.json()
@@ -43,7 +35,6 @@ def fetch_ticket_data(_token):
         st.error(f"Lỗi kết nối API (Có thể Token đã hết hạn): {e}")
         return None
 
-# Chạy hàm lấy dữ liệu với token hiện tại
 data = fetch_ticket_data(active_token)
 
 if data:
@@ -55,11 +46,20 @@ if data:
             continue
             
         name = sec.get("name", "Unknown")
-        seats = sec.get("seats", []) 
+        all_seats = []
         
-        if seats:
-            total = len(seats)
-            sold = sum(1 for s in seats if s.get("status") != 0)
+        # LOGIC MỚI: Tìm bới các lớp để lấy danh sách ghế
+        if "seats" in sec:
+            all_seats.extend(sec["seats"])
+        elif "rows" in sec: # Nếu ghế giấu trong từng hàng
+            for row in sec["rows"]:
+                if "seats" in row:
+                    all_seats.extend(row["seats"])
+        
+        if all_seats:
+            total = len(all_seats)
+            # Ticketbox thường: 0 = trống, 1 = đang giữ, khác 0 là đã bán
+            sold = sum(1 for s in all_seats if str(s.get("status")) != "0")
             stats.append({
                 "Hạng Vé / Khu Vực": name, 
                 "Tổng vé": total, 
@@ -77,7 +77,10 @@ if data:
         
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
-        st.warning("Không tìm thấy cấu trúc mảng ghế trong dữ liệu trả về.")
+        st.warning("Vẫn không tìm thấy dữ liệu ghế! Dưới đây là JSON thực tế, m copy phần xổ ra hoặc chụp màn hình quăng lại t xem nha:")
+        # Bật debug lên để nhìn trực tiếp cấu trúc
+        with st.expander("BẤM VÀO ĐÂY ĐỂ XEM DỮ LIỆU JSON"):
+            st.json(sections[:3]) 
 
 if st.button("🔄 Làm mới dữ liệu"):
     fetch_ticket_data.clear()
