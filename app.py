@@ -38,11 +38,11 @@ def fetch_ticket_data(_token):
 data = fetch_ticket_data(active_token)
 
 if data:
-    # --- ĐÃ SỬA LỖI Ở DÒNG NÀY ---
-    # Ticketbox bọc dữ liệu trong key "data" -> "result" -> "sections"
     sections = data.get("data", {}).get("result", {}).get("sections", [])
-    
     stats = []
+    
+    # Biến debug dành cho m để kiểm tra có bao nhiêu mã status xuất hiện
+    debug_statuses = {}
     
     for sec in sections:
         if sec.get("isStage"): 
@@ -55,19 +55,25 @@ if data:
             all_seats.extend(sec["seats"])
         elif "rows" in sec:
             for row in sec["rows"]:
-                # Mò vào từng dòng để bốc ghế ra
                 if "seats" in row:
                     all_seats.extend(row["seats"])
         
         if all_seats:
             total = len(all_seats)
-            # Dựa vào thuộc tính trạng thái ghế (0 = đang bán, số khác = đã khoá/bán)
-            sold = sum(1 for s in all_seats if str(s.get("status")) != "0")
+            
+            for s in all_seats:
+                st_val = str(s.get("status", "None"))
+                debug_statuses[st_val] = debug_statuses.get(st_val, 0) + 1
+
+            # LOGIC MỚI: Định nghĩa status = 1 là ghế "Đang trống"
+            available = sum(1 for s in all_seats if str(s.get("status")) == "1")
+            sold = total - available
+            
             stats.append({
                 "Hạng Vé / Khu Vực": name, 
                 "Tổng vé": total, 
                 "Đã bán": sold, 
-                "Còn trống": total - sold
+                "Còn trống": available
             })
 
     if stats:
@@ -79,10 +85,12 @@ if data:
         col3.metric("✅ Còn trống", df["Còn trống"].sum())
         
         st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        with st.expander("🛠 Dành cho Dev: Thống kê mã status thực tế từ API"):
+            st.info("Ticketbox đang phân loại ghế bằng các mã sau (Số lượng ghế tương ứng). Nếu data đếm sai, m chỉ cần đối chiếu mảng này để sửa lại logic đếm `status == '?'` ở trên code.")
+            st.json(debug_statuses)
     else:
-        st.warning("Đã vào đúng cấu trúc JSON nhưng Ticketbox vẫn cất mảng 'seats' ở đâu đó. Nhấn vào dưới để xem nha:")
-        with st.expander("BẤM VÀO ĐÂY ĐỂ XEM DỮ LIỆU JSON"):
-            st.json(sections[:2]) 
+        st.warning("Không tìm thấy dữ liệu ghế.")
 
 if st.button("🔄 Làm mới dữ liệu"):
     fetch_ticket_data.clear()
